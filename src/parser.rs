@@ -1,9 +1,9 @@
 use crate::ast;
-use crate::literal::Literal;
 use crate::token::{Token, TokenKind};
-use anyhow::{anyhow, bail};
+use crate::value::Value;
+use anyhow::bail;
 
-type ParseResult = anyhow::Result<Box<dyn ast::Expr>>;
+type ParseResult = anyhow::Result<Box<ast::Expr>>;
 
 pub struct Parser {
     tokens: Vec<Token>,
@@ -135,14 +135,14 @@ impl Parser {
     /// primary        → NUMBER | STRING | "true" | "false" | "nil"
     //                 | "(" expression ")" ;
     fn parse_primary(&mut self) -> ParseResult {
-        let expr: Box<dyn ast::Expr> = if self.match_(&[TokenKind::Number, TokenKind::String]) {
+        let expr: Box<ast::Expr> = if self.match_(&[TokenKind::Number, TokenKind::String]) {
             Box::new(ast::LiteralExpr(self.previous().literal.clone().unwrap()))
         } else if self.match_(&[TokenKind::True]) {
-            Box::new(ast::LiteralExpr(Literal::Boolean(true)))
+            Box::new(ast::LiteralExpr(Value::Boolean(true)))
         } else if self.match_(&[TokenKind::False]) {
-            Box::new(ast::LiteralExpr(Literal::Boolean(false)))
+            Box::new(ast::LiteralExpr(Value::Boolean(false)))
         } else if self.match_(&[TokenKind::Nil]) {
-            Box::new(ast::LiteralExpr(Literal::Nil))
+            Box::new(ast::LiteralExpr(Value::Nil))
         } else if self.match_(&[TokenKind::LeftParen]) {
             let expr = self.parse_expression()?;
             self.consume(&TokenKind::RightParen, "Expect ')' after expression")?;

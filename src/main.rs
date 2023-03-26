@@ -1,10 +1,12 @@
 mod ast;
-mod literal;
+mod interpreter;
 mod parser;
 mod scanner;
 mod token;
+mod value;
 
 use crate::ast::DepthPrinter;
+use crate::interpreter::Interpreter;
 use crate::parser::Parser;
 use crate::scanner::Scanner;
 use std::io::{BufRead, Write};
@@ -37,8 +39,11 @@ fn run(source: &str) -> anyhow::Result<()> {
     match parser.parse() {
         Ok(expr) => {
             let mut printer = DepthPrinter::new();
-            expr.accept(&mut printer);
+            printer.visit(&expr);
             printer.print();
+            println!("{}", "=".repeat(10));
+            let mut interpreter = Interpreter::new();
+            println!("{:?}", interpreter.evaluate_expr(&expr));
         }
         Err(e) => {
             eprintln!("{}", e.to_string());
@@ -54,7 +59,7 @@ fn run_prompt() -> anyhow::Result<()> {
     loop {
         let mut buf = String::new();
 
-        print!("> ");
+        print!(">>> ");
         std::io::stdout().flush().unwrap();
         match stdin.lock().read_line(&mut buf) {
             Ok(_n) => {

@@ -1,11 +1,11 @@
-use crate::literal::Literal;
+use crate::value::Value;
 use std::fmt::Formatter;
 
 #[derive(Debug)]
 pub struct Token {
     pub kind: TokenKind,
     pub lexeme: String,
-    pub literal: Option<Literal>,
+    pub literal: Option<Value>,
     pub line: usize,
 }
 

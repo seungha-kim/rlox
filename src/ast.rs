@@ -1,59 +1,25 @@
 use std::fmt::Debug;
 use std::fmt::Write;
 
-use crate::literal::Literal;
 use crate::token::TokenKind;
+use crate::value::Value;
 
-pub trait ExprVisitor {
-    fn visit_binary(&mut self, expr: &BinaryExpr);
-    fn visit_grouping(&mut self, expr: &GroupingExpr);
-    fn visit_literal(&mut self, expr: &LiteralExpr);
-    fn visit_unary(&mut self, expr: &UnaryExpr);
+pub enum Expr {
+    BinaryExpr {
+        left: Box<Expr>,
+        operator: TokenKind,
+        right: Box<Expr>,
+    },
+    GroupingExpr(Box<Expr>),
+    LiteralExpr(Value),
+    UnaryExpr {
+        operator: TokenKind,
+        right: Box<Expr>,
+    },
 }
 
-// TODO: https://doc.rust-lang.org/reference/procedural-macros.html
-pub trait Expr {
-    fn accept(&self, visitor: &mut dyn ExprVisitor);
-}
+pub use Expr::*;
 
-pub struct BinaryExpr {
-    pub left: Box<dyn Expr>,
-    pub operator: TokenKind,
-    pub right: Box<dyn Expr>,
-}
-
-impl Expr for BinaryExpr {
-    fn accept(&self, visitor: &mut dyn ExprVisitor) {
-        visitor.visit_binary(self);
-    }
-}
-
-pub struct GroupingExpr(pub Box<dyn Expr>);
-
-impl Expr for GroupingExpr {
-    fn accept(&self, visitor: &mut dyn ExprVisitor) {
-        visitor.visit_grouping(self);
-    }
-}
-
-pub struct LiteralExpr(pub Literal);
-
-impl Expr for LiteralExpr {
-    fn accept(&self, visitor: &mut dyn ExprVisitor) {
-        visitor.visit_literal(self);
-    }
-}
-
-pub struct UnaryExpr {
-    pub operator: TokenKind,
-    pub right: Box<dyn Expr>,
-}
-
-impl Expr for UnaryExpr {
-    fn accept(&self, visitor: &mut dyn ExprVisitor) {
-        visitor.visit_unary(self);
-    }
-}
 #[derive(Default)]
 pub struct DepthPrinter {
     buf: String,
@@ -97,35 +63,38 @@ impl DepthPrinter {
         f(self);
         self.desc();
     }
-}
 
-impl ExprVisitor for DepthPrinter {
-    fn visit_binary(&mut self, expr: &BinaryExpr) {
-        self.in_depth(|p| {
-            expr.left.accept(p);
-        });
-        self.print_debug(&expr.operator);
-        self.in_depth(|p| {
-            expr.right.accept(p);
-        });
-    }
-
-    fn visit_grouping(&mut self, expr: &GroupingExpr) {
-        self.print_str("Group");
-        self.in_depth(|p| {
-            expr.0.accept(p);
-        });
-    }
-
-    fn visit_literal(&mut self, expr: &LiteralExpr) {
-        self.print_debug(&expr.0);
-    }
-
-    fn visit_unary(&mut self, expr: &UnaryExpr) {
-        self.print_debug(&expr.operator);
-        self.in_depth(|p| {
-            expr.right.accept(p);
-        });
+    pub fn visit(&mut self, expr: &Expr) {
+        match expr {
+            BinaryExpr {
+                left,
+                operator,
+                right,
+            } => {
+                self.in_depth(|p| {
+                    p.visit(left);
+                });
+                self.print_debug(operator);
+                self.in_depth(|p| {
+                    p.visit(right);
+                });
+            }
+            GroupingExpr(expr) => {
+                self.print_str("Group");
+                self.in_depth(|p| {
+                    p.visit(expr);
+                });
+            }
+            LiteralExpr(lit) => {
+                self.print_debug(lit);
+            }
+            UnaryExpr { operator, right } => {
+                self.print_debug(operator);
+                self.in_depth(|p| {
+                    p.visit(right);
+                });
+            }
+        }
     }
 }
 
@@ -135,17 +104,18 @@ mod tests {
 
     #[test]
     fn test_printer() {
+        use Expr::*;
         let tree = BinaryExpr {
-            left: Box::new(GroupingExpr(Box::new(LiteralExpr(Literal::Number(1.0))))),
+            left: Box::new(GroupingExpr(Box::new(LiteralExpr(Value::Number(1.0))))),
             operator: TokenKind::Plus,
             right: Box::new(UnaryExpr {
                 operator: TokenKind::Minus,
-                right: Box::new(LiteralExpr(Literal::Number(2.0))),
+                right: Box::new(LiteralExpr(Value::Number(2.0))),
             }),
         };
 
         let mut printer = DepthPrinter::default();
-        tree.accept(&mut printer);
+        printer.visit(&tree);
 
         #[rustfmt::skip]
 let expected =
