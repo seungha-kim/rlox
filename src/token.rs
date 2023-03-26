@@ -16,7 +16,7 @@ impl std::fmt::Display for Token {
 }
 
 #[allow(dead_code)]
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug, Copy, Clone, Eq, PartialEq)]
 pub enum TokenKind {
     // Single-character tokens.
     LeftParen,

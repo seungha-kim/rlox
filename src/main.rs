@@ -1,7 +1,11 @@
+mod ast;
 mod literal;
+mod parser;
 mod scanner;
 mod token;
 
+use crate::ast::DepthPrinter;
+use crate::parser::Parser;
 use crate::scanner::Scanner;
 use std::io::{BufRead, Write};
 
@@ -28,9 +32,19 @@ fn run_file(path: &str) -> anyhow::Result<()> {
 fn run(source: &str) -> anyhow::Result<()> {
     let scanner = Scanner::new(source);
     let tokens = scanner.scan_tokens()?;
-    for token in &tokens {
-        println!("{:?}", token);
+
+    let mut parser = Parser::new(tokens);
+    match parser.parse() {
+        Ok(expr) => {
+            let mut printer = DepthPrinter::new();
+            expr.accept(&mut printer);
+            printer.print();
+        }
+        Err(e) => {
+            eprintln!("{}", e.to_string());
+        }
     }
+
     Ok(())
 }
 
