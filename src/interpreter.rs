@@ -42,6 +42,23 @@ impl<'p> Interpreter<'p> {
                 }
                 self.pop_environment();
             }
+            Statement::If {
+                condition,
+                then_branch,
+                else_branch,
+            } => {
+                let condition = self.evaluate_expr(condition)?;
+                if Self::is_truthy(&condition) {
+                    self.evaluate_stmt(then_branch)?;
+                } else if let Some(else_branch) = else_branch {
+                    self.evaluate_stmt(else_branch)?;
+                }
+            }
+            Statement::While { condition, body } => {
+                while Self::is_truthy(&self.evaluate_expr(condition)?) {
+                    self.evaluate_stmt(body)?;
+                }
+            }
         }
         Ok(())
     }
@@ -105,6 +122,18 @@ impl<'p> Interpreter<'p> {
                 let value = self.evaluate_expr(expr)?;
                 self.assign_variable(name, value.clone())?;
                 value
+            }
+            Expr::Logical {
+                left,
+                operator,
+                right,
+            } => {
+                let left = self.evaluate_expr(left)?;
+                match operator {
+                    TokenKind::Or if Self::is_truthy(&left) => left,
+                    TokenKind::And if !Self::is_truthy(&left) => left,
+                    _ => self.evaluate_expr(right)?,
+                }
             }
         };
 

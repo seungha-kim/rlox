@@ -49,35 +49,115 @@ impl Parser {
         Ok(ast::Statement::Variable { id, expr })
     }
 
-    pub fn parse_statement(&mut self) -> ParseStmtResult {
+    fn parse_statement(&mut self) -> ParseStmtResult {
         if self.match_(&[TokenKind::Print]) {
             self.parse_print_statement()
         } else if self.match_(&[TokenKind::LeftBrace]) {
             self.parse_block_statement()
+        } else if self.match_(&[TokenKind::If]) {
+            self.parse_if_statement()
+        } else if self.match_(&[TokenKind::While]) {
+            self.parse_while_statement()
+        } else if self.match_(&[TokenKind::For]) {
+            self.parse_for_statement()
         } else {
             self.parse_expression_statement()
         }
     }
 
-    pub fn parse_print_statement(&mut self) -> ParseStmtResult {
+    fn parse_print_statement(&mut self) -> ParseStmtResult {
         let value = self.parse_expression()?;
         self.consume(&TokenKind::Semicolon, "Expect ';' after value.")?;
         Ok(ast::Statement::Print(value))
     }
 
-    pub fn parse_expression_statement(&mut self) -> ParseStmtResult {
+    fn parse_expression_statement(&mut self) -> ParseStmtResult {
         let value = self.parse_expression()?;
         self.consume(&TokenKind::Semicolon, "Expect ';' after value.")?;
         Ok(ast::Statement::Expression(value))
     }
 
-    pub fn parse_block_statement(&mut self) -> ParseStmtResult {
+    fn parse_block_statement(&mut self) -> ParseStmtResult {
         let mut statements = Vec::new();
         while !self.check(&TokenKind::RightBrace) && !self.is_at_end() {
             statements.push(Box::new(self.parse_declaration()?));
         }
         self.consume(&TokenKind::RightBrace, "Expect '}' after block.")?;
         Ok(ast::Statement::Block(statements))
+    }
+
+    fn parse_if_statement(&mut self) -> ParseStmtResult {
+        self.consume(&TokenKind::LeftParen, "Expect '(' after 'if'.")?;
+        let condition = self.parse_expression()?;
+        self.consume(&TokenKind::RightParen, "Expect ')' after if condition.")?;
+        let then_branch = Box::new(self.parse_statement()?);
+        let else_branch = if self.match_(&[TokenKind::Else]) {
+            Some(Box::new(self.parse_statement()?))
+        } else {
+            None
+        };
+        Ok(ast::Statement::If {
+            condition,
+            then_branch,
+            else_branch,
+        })
+    }
+
+    fn parse_while_statement(&mut self) -> ParseStmtResult {
+        self.consume(&TokenKind::LeftParen, "Expect '(' after 'while'.")?;
+        let condition = self.parse_expression()?;
+        self.consume(&TokenKind::RightParen, "Expect ')' after condition.")?;
+        let body = Box::new(self.parse_statement()?);
+
+        Ok(ast::Statement::While { condition, body })
+    }
+
+    fn parse_for_statement(&mut self) -> ParseStmtResult {
+        self.consume(&TokenKind::LeftParen, "Expect '(' after 'for'.")?;
+
+        let initializer = if self.match_(&[TokenKind::Semicolon]) {
+            None
+        } else if self.match_(&[TokenKind::Var]) {
+            Some(self.parse_variable_decl()?)
+        } else {
+            Some(self.parse_expression_statement()?)
+        };
+
+        let condition = if self.check(&TokenKind::Semicolon) {
+            None
+        } else {
+            Some(self.parse_expression()?)
+        };
+        self.consume(&TokenKind::Semicolon, "Expect ';' after loop condition.")?;
+
+        let increment = if self.check(&TokenKind::RightParen) {
+            None
+        } else {
+            Some(self.parse_expression()?)
+        };
+        self.consume(&TokenKind::RightParen, "Expect ')' after for clauses.")?;
+
+        let mut body = self.parse_statement()?;
+
+        // Desugaring
+        if let Some(increment) = increment {
+            body = ast::Statement::Block(vec![
+                Box::new(body),
+                Box::new(ast::Statement::Expression(increment)),
+            ]);
+        }
+
+        let condition = condition.unwrap_or(Box::new(ast::Expr::LiteralExpr(Value::Boolean(true))));
+        body = ast::Statement::While {
+            condition,
+            body: Box::new(body),
+        };
+
+        if let Some(initializer) = initializer {
+            body = ast::Statement::Block(vec![Box::new(initializer), Box::new(body)]);
+        }
+
+        Ok(body)
     }
 
     /*
@@ -100,16 +180,27 @@ impl Parser {
     varDecl        → "var" IDENTIFIER ( "=" expression )? ";" ;
 
     statement      → exprStmt
+                   | forStmt
+                   | ifStmt
                    | printStmt
+                   | whileStmt
                    | block ;
 
+    forStmt        → "for" "(" ( varDecl | exprStmt | ";" )
+                     expression? ";"
+                     expression? ")" statement ;
+    whileStmt      → "while" "(" expression ")" statement ;
+    ifStmt         → "if" "(" expression ")" statement
+                   ( "else" statement )? ;
     exprStmt       → expression ";" ;
     printStmt      → "print" expression ";" ;
     block          → "{" declaration* "}" ;
 
     expression     → assignment ;
     assignment     → IDENTIFIER "=" assignment
-                   | equality ;
+                   | logic_or ;
+    logic_or       → logic_and ( "or" logic_and )* ;
+    logic_and      → equality ( "and" equality )* ;
     equality       → comparison ( ( "!=" | "==" ) comparison )* ;
     comparison     → term ( ( ">" | ">=" | "<" | "<=" ) term )* ;
     term           → factor ( ( "-" | "+" ) factor )* ;
@@ -127,7 +218,7 @@ impl Parser {
     }
 
     fn parse_assignment(&mut self) -> ParseExprResult {
-        let expr = self.parse_equality()?;
+        let expr = self.parse_or()?;
 
         if self.match_(&[TokenKind::Equal]) {
             let equals = self.previous().clone();
@@ -142,6 +233,38 @@ impl Parser {
         }
 
         return Ok(expr);
+    }
+
+    fn parse_or(&mut self) -> ParseExprResult {
+        let mut expr = self.parse_and()?;
+
+        while self.match_(&[TokenKind::Or]) {
+            let operator = self.previous().kind;
+            let right = self.parse_and()?;
+            expr = Box::new(ast::Logical {
+                left: expr,
+                operator,
+                right,
+            });
+        }
+
+        Ok(expr)
+    }
+
+    fn parse_and(&mut self) -> ParseExprResult {
+        let mut expr = self.parse_equality()?;
+
+        while self.match_(&[TokenKind::And]) {
+            let operator = self.previous().kind;
+            let right = self.parse_equality()?;
+            expr = Box::new(ast::Logical {
+                left: expr,
+                operator,
+                right,
+            });
+        }
+
+        Ok(expr)
     }
 
     /// equality       → comparison ( ( "!=" | "==" ) comparison )* ;
