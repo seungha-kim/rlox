@@ -1,7 +1,7 @@
 use crate::value::Value;
 use std::fmt::Formatter;
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Token {
     pub kind: TokenKind,
     pub lexeme: String,
