@@ -1,4 +1,5 @@
 mod ast;
+mod func;
 mod interpreter;
 mod parser;
 mod scanner;
@@ -39,6 +40,7 @@ fn run(source: &str, interpreter: &mut Interpreter) -> anyhow::Result<()> {
     let mut parser = Parser::new(tokens);
     match parser.parse() {
         Ok(statements) => {
+            // println!("{:?}", &statements);
             for s in &statements {
                 interpreter.evaluate_stmt(s)?;
             }

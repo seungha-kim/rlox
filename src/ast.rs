@@ -1,6 +1,8 @@
 use crate::token::TokenKind;
 use crate::value::Value;
+use std::sync::Arc;
 
+#[derive(Debug)]
 pub enum Statement {
     Expression(Box<Expr>),
     Print(Box<Expr>),
@@ -18,8 +20,15 @@ pub enum Statement {
         condition: Box<Expr>,
         body: Box<Statement>,
     },
+    Function {
+        name: String,
+        params: Vec<String>,
+        body: Arc<Statement>,
+    },
+    Return(Option<Box<Expr>>),
 }
 
+#[derive(Debug)]
 pub enum Expr {
     BinaryExpr {
         left: Box<Expr>,
@@ -39,6 +48,10 @@ pub enum Expr {
         left: Box<Expr>,
         operator: TokenKind,
         right: Box<Expr>,
+    },
+    Call {
+        callee: Box<Expr>,
+        arguments: Vec<Box<Expr>>,
     },
 }
 

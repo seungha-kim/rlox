@@ -2,6 +2,7 @@ use crate::ast;
 use crate::token::{Token, TokenKind};
 use crate::value::Value;
 use anyhow::bail;
+use std::sync::Arc;
 
 type ParseExprResult = anyhow::Result<Box<ast::Expr>>;
 type ParseStmtResult = anyhow::Result<ast::Statement>;
@@ -24,11 +25,14 @@ impl Parser {
         Ok(statements)
     }
 
-    /// declaration    → varDecl
+    /// declaration    → funDecl
+    //                 | varDecl
     //                 | statement ;
     fn parse_declaration(&mut self) -> ParseStmtResult {
         if self.match_(&[TokenKind::Var]) {
             self.parse_variable_decl()
+        } else if self.match_(&[TokenKind::Fun]) {
+            self.parse_function_decl()
         } else {
             self.parse_statement()
         }
@@ -49,6 +53,39 @@ impl Parser {
         Ok(ast::Statement::Variable { id, expr })
     }
 
+    fn parse_function_decl(&mut self) -> ParseStmtResult {
+        // TODO: method
+        let name = self
+            .consume(&TokenKind::Identifier, "Expect function name.")?
+            .lexeme
+            .to_owned();
+        self.consume(&TokenKind::LeftParen, "Expect '(' after function name.")?;
+        let mut params = Vec::new();
+        if !self.check(&TokenKind::RightParen) {
+            loop {
+                if params.len() >= 255 {
+                    Self::error(self.peek(), "Can't have more than 255 parameters")?;
+                }
+
+                params.push(
+                    self.consume(&TokenKind::Identifier, "Expect parameter name.")?
+                        .lexeme
+                        .to_owned(),
+                );
+
+                if !self.match_(&[TokenKind::Comma]) {
+                    break;
+                }
+            }
+        }
+        self.consume(&TokenKind::RightParen, "Expect ')' after parameters.")?;
+
+        self.consume(&TokenKind::LeftBrace, "Expect '{' before function body.")?;
+
+        let body = Arc::new(self.parse_block_statement()?);
+        Ok(ast::Statement::Function { name, params, body })
+    }
+
     fn parse_statement(&mut self) -> ParseStmtResult {
         if self.match_(&[TokenKind::Print]) {
             self.parse_print_statement()
@@ -60,6 +97,8 @@ impl Parser {
             self.parse_while_statement()
         } else if self.match_(&[TokenKind::For]) {
             self.parse_for_statement()
+        } else if self.match_(&[TokenKind::Return]) {
+            self.parse_return_statement()
         } else {
             self.parse_expression_statement()
         }
@@ -160,6 +199,15 @@ impl Parser {
         Ok(body)
     }
 
+    fn parse_return_statement(&mut self) -> ParseStmtResult {
+        let mut expr = None;
+        if !self.check(&TokenKind::Semicolon) {
+            expr = Some(self.parse_expression()?);
+        }
+        self.consume(&TokenKind::Semicolon, "Expect ';' after return value.")?;
+        Ok(ast::Statement::Return(expr))
+    }
+
     /*
     Each method for parsing a grammar rule produces a syntax tree
     for that rule and returns it to the caller.
@@ -174,18 +222,25 @@ impl Parser {
 
     program        → declaration* EOF ;
 
-    declaration    → varDecl
+    declaration    → funDecl
+                   | varDecl
                    | statement ;
 
     varDecl        → "var" IDENTIFIER ( "=" expression )? ";" ;
+
+    funDecl        → "fun" function ;
+    function       → IDENTIFIER "(" parameters? ")" block ;
+    parameters     → IDENTIFIER ( "," IDENTIFIER )* ;
 
     statement      → exprStmt
                    | forStmt
                    | ifStmt
                    | printStmt
+                   | returnStmt
                    | whileStmt
                    | block ;
 
+    returnStmt     → "return" expression? ";" ;
     forStmt        → "for" "(" ( varDecl | exprStmt | ";" )
                      expression? ";"
                      expression? ")" statement ;
@@ -205,8 +260,9 @@ impl Parser {
     comparison     → term ( ( ">" | ">=" | "<" | "<=" ) term )* ;
     term           → factor ( ( "-" | "+" ) factor )* ;
     factor         → unary ( ( "/" | "*" ) unary )* ;
-    unary          → ( "!" | "-" ) unary
-                   | primary ;
+    unary          → ( "!" | "-" ) unary | call ;
+    call           → primary ( "(" arguments? ")" )* ;
+    arguments      → expression ( "," expression )* ;
     primary        → NUMBER | STRING | "true" | "false" | "nil"
                    | "(" expression ")"
                    | IDENTIFIER ;
@@ -340,16 +396,50 @@ impl Parser {
         return Ok(expr);
     }
 
-    /// unary          → ( "!" | "-" ) unary
-    //                 | primary ;
+    /// unary          → ( "!" | "-" ) unary | call ;
     fn parse_unary(&mut self) -> ParseExprResult {
         if self.match_(&[TokenKind::Bang, TokenKind::Minus]) {
             let operator = self.previous().kind;
             let right = self.parse_unary()?;
             Ok(Box::new(ast::UnaryExpr { operator, right }))
         } else {
-            self.parse_primary()
+            self.parse_call()
         }
+    }
+
+    /// call           → primary ( "(" arguments? ")" )* ;
+    /// arguments      → expression ( "," expression )* ;
+    fn parse_call(&mut self) -> ParseExprResult {
+        let mut expr = self.parse_primary()?;
+
+        loop {
+            if self.match_(&[TokenKind::LeftParen]) {
+                let mut arguments = Vec::new();
+                if !self.check(&TokenKind::RightParen) {
+                    loop {
+                        if arguments.len() >= 255 {
+                            Self::error(self.peek(), "Can't have more than 255 arguments.")?;
+                        }
+
+                        arguments.push(self.parse_expression()?);
+                        if !self.match_(&[TokenKind::Comma]) {
+                            break;
+                        }
+                    }
+                }
+
+                self.consume(&TokenKind::RightParen, "Expect ')' after arguments")?;
+
+                expr = Box::new(ast::Call {
+                    callee: expr,
+                    arguments,
+                });
+            } else {
+                break;
+            }
+        }
+
+        Ok(expr)
     }
 
     /// primary        → NUMBER | STRING | "true" | "false" | "nil"

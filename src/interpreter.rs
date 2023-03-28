@@ -1,19 +1,77 @@
 use crate::ast::{Expr, Statement};
+use crate::func;
+use crate::func::{Callable, FunctionObject};
 use crate::token::TokenKind;
-use crate::value::Value;
+use crate::value::{Object, Value};
 use anyhow::bail;
 use std::collections::HashMap;
+use std::fmt::Formatter;
+use std::sync::{Arc, Mutex};
+
+#[derive(Debug)]
+pub struct Environment {
+    parent: Option<Arc<Mutex<Environment>>>,
+    variables: HashMap<String, Value>,
+}
+
+impl Environment {
+    fn new(parent: Option<Arc<Mutex<Environment>>>) -> Environment {
+        Self {
+            parent,
+            variables: HashMap::new(),
+        }
+    }
+
+    pub fn get_variable(&self, name: &str) -> anyhow::Result<Value> {
+        let value = if let Some(value) = self.variables.get(name) {
+            value.clone()
+        } else if let Some(parent) = &self.parent {
+            parent.lock().unwrap().get_variable(name)?
+        } else {
+            bail!("Undefined variable '{}'.", name);
+        };
+
+        Ok(value)
+    }
+
+    pub fn define_variable(&mut self, name: &str, value: Value) -> anyhow::Result<()> {
+        self.variables.insert(name.to_string(), value);
+        Ok(())
+    }
+
+    pub fn assign_variable(&mut self, name: &str, value: &Value) -> anyhow::Result<()> {
+        // TODO: fun counter() { var c = 1; fun inc() { c = c + 1; return c; } return inc; }
+        if self.variables.contains_key(name) {
+            self.variables.insert(name.to_string(), value.clone());
+        } else if let Some(parent) = &self.parent {
+            parent.lock().unwrap().assign_variable(name, value)?;
+        } else {
+            bail!("Undefined variable '{name}'.");
+        }
+        Ok(())
+    }
+}
 
 pub struct Interpreter<'p> {
-    environment_stack: Vec<HashMap<String, Value>>,
+    pub environment: Arc<Mutex<Environment>>,
     printer: &'p mut dyn Printer,
 }
 
 impl<'p> Interpreter<'p> {
     pub fn new(printer: &'p mut dyn Printer) -> Self {
-        let environment_stack = vec![HashMap::new()];
+        let mut global_env = Environment {
+            parent: None,
+            variables: HashMap::new(),
+        };
+
+        for f in func::impls::ALL_FUNCS {
+            global_env
+                .variables
+                .insert(f.name.to_owned(), Value::NativeFunction(f));
+        }
+
         Self {
-            environment_stack,
+            environment: Arc::new(Mutex::new(global_env)),
             printer,
         }
     }
@@ -33,14 +91,20 @@ impl<'p> Interpreter<'p> {
                 } else {
                     Value::Nil
                 };
-                self.define_variable(id, value)?;
+                self.environment
+                    .lock()
+                    .unwrap()
+                    .define_variable(id, value)?;
             }
             Statement::Block(ss) => {
-                self.push_environment(); // TODO: scopeguard
+                self.push_environment();
+                let mut zelf = scopeguard::guard(self, |zelf| {
+                    zelf.pop_environment();
+                });
+
                 for s in ss {
-                    self.evaluate_stmt(s)?;
+                    zelf.evaluate_stmt(s)?;
                 }
-                self.pop_environment();
             }
             Statement::If {
                 condition,
@@ -58,6 +122,27 @@ impl<'p> Interpreter<'p> {
                 while Self::is_truthy(&self.evaluate_expr(condition)?) {
                     self.evaluate_stmt(body)?;
                 }
+            }
+            Statement::Function { name, params, body } => {
+                let closure = self.environment.clone();
+                self.environment.lock().unwrap().define_variable(
+                    name,
+                    Value::FunctionObject(Object::new(FunctionObject {
+                        name: name.to_owned(),
+                        parameters: params.to_owned(),
+                        body: body.clone(),
+                        closure,
+                    })),
+                )?;
+            }
+            Statement::Return(expr) => {
+                let value = if let Some(expr) = expr {
+                    self.evaluate_expr(expr)?
+                } else {
+                    Value::Nil
+                };
+                // Rewind stack until call statement, using this dirty way!
+                return Err(ReturnError(value).into());
             }
         }
         Ok(())
@@ -117,10 +202,13 @@ impl<'p> Interpreter<'p> {
                     }
                 }
             }
-            Expr::Variable(id) => self.get_variable(id)?.clone(),
+            Expr::Variable(id) => self.environment.lock().unwrap().get_variable(id)?,
             Expr::Assign(name, expr) => {
                 let value = self.evaluate_expr(expr)?;
-                self.assign_variable(name, value.clone())?;
+                self.environment
+                    .lock()
+                    .unwrap()
+                    .assign_variable(name, &value)?;
                 value
             }
             Expr::Logical {
@@ -133,6 +221,31 @@ impl<'p> Interpreter<'p> {
                     TokenKind::Or if Self::is_truthy(&left) => left,
                     TokenKind::And if !Self::is_truthy(&left) => left,
                     _ => self.evaluate_expr(right)?,
+                }
+            }
+            Expr::Call { callee, arguments } => {
+                let callable = self.evaluate_expr(callee)?;
+                let mut arg_values = Vec::new();
+                for arg in arguments {
+                    arg_values.push(self.evaluate_expr(arg)?);
+                }
+
+                let result = if let Value::NativeFunction(f) = callable {
+                    f.call(self, &arg_values)
+                } else if let Value::FunctionObject(f) = callable {
+                    f.call(self, &arg_values)
+                } else {
+                    bail!("Only function types can be called.");
+                };
+
+                match result {
+                    Ok(value) => value,
+                    Err(e) => match e.downcast::<ReturnError>() {
+                        Ok(re) => re.0,
+                        Err(e) => {
+                            return Err(e);
+                        }
+                    },
                 }
             }
         };
@@ -149,41 +262,12 @@ impl<'p> Interpreter<'p> {
     }
 
     pub fn push_environment(&mut self) {
-        self.environment_stack.push(HashMap::new());
+        self.environment = Arc::new(Mutex::new(Environment::new(Some(self.environment.clone()))));
     }
 
     pub fn pop_environment(&mut self) {
-        self.environment_stack.pop().unwrap();
-    }
-
-    pub fn define_variable(&mut self, name: &str, value: Value) -> anyhow::Result<()> {
-        if let Some(env) = self.environment_stack.last_mut() {
-            env.insert(name.to_string(), value);
-            Ok(())
-        } else {
-            bail!("No environment found");
-        }
-    }
-
-    pub fn assign_variable(&mut self, name: &str, value: Value) -> anyhow::Result<()> {
-        for env in self.environment_stack.iter_mut().rev() {
-            if env.contains_key(name) {
-                env.insert(name.to_string(), value);
-                return Ok(());
-            }
-        }
-
-        bail!("Undefined variable '{name}'.");
-    }
-
-    pub fn get_variable(&self, name: &str) -> anyhow::Result<&Value> {
-        for env in self.environment_stack.iter().rev() {
-            if let Some(v) = env.get(name) {
-                return Ok(v);
-            }
-        }
-
-        bail!("No key '{}' in any environment", name);
+        let parent = self.environment.lock().unwrap().parent.clone().unwrap();
+        self.environment = parent;
     }
 }
 
@@ -198,6 +282,17 @@ impl Printer for StdOutPrinter {
         println!("{}", message);
     }
 }
+
+#[derive(Debug)]
+struct ReturnError(Value);
+
+impl std::fmt::Display for ReturnError {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{:?}", self)
+    }
+}
+
+impl std::error::Error for ReturnError {}
 
 #[cfg(test)]
 mod tests {
@@ -223,8 +318,20 @@ mod tests {
         }
     }
 
+    fn print_from(source: &str) -> anyhow::Result<Vec<String>> {
+        let mut printer = TestPrinter::new();
+        let tokens = Scanner::new(source).scan_tokens()?;
+        let mut parser = Parser::new(tokens);
+        let statements = parser.parse()?;
+        let mut interpreter = Interpreter::new(&mut printer);
+        for s in statements {
+            interpreter.evaluate_stmt(&s)?;
+        }
+        Ok(printer.messages)
+    }
+
     #[test]
-    fn test_source() -> anyhow::Result<()> {
+    fn test_source() {
         let source = r"
 var a = 1;
 var b = 2;
@@ -234,15 +341,25 @@ var b = 2;
     print a + b;
 }
         ";
-        let mut printer = TestPrinter::new();
-        let tokens = Scanner::new(source).scan_tokens()?;
-        let mut parser = Parser::new(tokens);
-        let statements = parser.parse()?;
-        let mut interpreter = Interpreter::new(&mut printer);
-        for s in statements {
-            interpreter.evaluate_stmt(&s)?;
-        }
-        assert_eq!(vec!["Number(7.0)"], printer.messages);
-        Ok(())
+
+        assert_eq!(vec!["Number(7.0)"], print_from(source).unwrap());
+    }
+
+    #[test]
+    fn test_closure() {
+        let source = r"
+fun counter() {
+    var c = 0;
+    fun inc() {
+        c = c + 1;
+        return c;
+    }
+    return inc;
+}
+var c = counter();
+c();
+print c();
+";
+        assert_eq!(vec!["Number(2.0)"], print_from(source).unwrap());
     }
 }
