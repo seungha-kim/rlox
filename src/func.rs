@@ -36,21 +36,15 @@ impl Callable for FunctionObject {
             _ => {}
         }
 
-        let mut closure = self.closure.clone();
-        std::mem::swap(&mut closure, &mut interpreter.environment);
-        interpreter.push_environment();
-        let mut interpreter = scopeguard::guard(interpreter, |i| {
-            i.pop_environment();
-            std::mem::swap(&mut closure, &mut i.environment);
-        });
+        let environment = Environment::new_ptr(self.closure.clone());
         {
-            let mut env = interpreter.environment.lock().unwrap();
+            let mut env = environment.lock().unwrap();
             for (param, arg) in self.parameters.iter().zip(args.iter()) {
                 // TODO: do not clone
                 env.define_variable(param, arg.clone())?;
             }
         }
-        interpreter.evaluate_stmt(&self.body)?;
+        interpreter.evaluate_stmt(&environment, &self.body)?;
 
         Ok(Value::Nil)
     }

@@ -6,7 +6,7 @@ mod scanner;
 mod token;
 mod value;
 
-use crate::interpreter::{Interpreter, StdOutPrinter};
+use crate::interpreter::{Environment, Interpreter, StdOutPrinter};
 use crate::parser::Parser;
 use crate::scanner::Scanner;
 use std::io::{BufRead, Write};
@@ -36,13 +36,13 @@ fn run_file(path: &str) -> anyhow::Result<()> {
 fn run(source: &str, interpreter: &mut Interpreter) -> anyhow::Result<()> {
     let scanner = Scanner::new(source);
     let tokens = scanner.scan_tokens()?;
-
     let mut parser = Parser::new(tokens);
+    let environment = Environment::new_globals_ptr();
     match parser.parse() {
         Ok(statements) => {
             // println!("{:?}", &statements);
             for s in &statements {
-                interpreter.evaluate_stmt(s)?;
+                interpreter.evaluate_stmt(&environment, s)?;
             }
         }
         Err(e) => {
