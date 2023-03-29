@@ -357,4 +357,18 @@ print c();
 ";
         assert_eq!(vec!["Number(2.0)"], print_from(source).unwrap());
     }
+
+    #[test]
+    fn test_recursion() {
+        let source = r"
+fun sum(x) {
+    if (x < 1) {
+        return 0;
+    }
+    return x + sum(x - 1);
+}
+print sum(4);
+";
+        assert_eq!(vec!["Number(10.0)"], print_from(source).unwrap());
+    }
 }
