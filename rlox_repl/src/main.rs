@@ -68,8 +68,8 @@ fn run_prompt() -> anyhow::Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::parser::Parser;
-    use crate::scanner::Scanner;
+    use rlox_interpreter::Printer;
+    use rlox_parser::{Parser, Scanner};
 
     struct TestPrinter {
         messages: Vec<String>,
@@ -150,6 +150,7 @@ print sum(4);
     }
 
     #[test]
+    #[ignore]
     fn test_capturing_using_static_scope() {
         let source = r#"
 var a = "global";

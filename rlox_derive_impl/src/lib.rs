@@ -77,9 +77,7 @@ pub fn syntax_node(attr: TokenStream, input: TokenStream) -> TokenStream {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use proc_macro2::TokenStream;
     use quote::quote;
-    use syn::parse2;
 
     #[test]
     fn test_syntax_node() {
