@@ -1,10 +1,10 @@
-use crate::ast::Statement;
 use crate::interpreter::{Environment, Interpreter};
 use crate::value::Value;
 use anyhow::bail;
 use std::cmp::Ordering;
 use std::fmt::{Debug, Formatter};
 use std::sync::{Arc, Mutex};
+use syntax_tree::Statement;
 
 pub trait Callable {
     fn arity(&self) -> usize;

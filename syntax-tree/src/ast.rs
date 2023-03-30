@@ -1,5 +1,4 @@
 use crate::token::TokenKind;
-use crate::value::Value;
 use std::sync::Arc;
 
 #[derive(Debug)]
@@ -36,7 +35,7 @@ pub enum Expr {
         right: Box<Expr>,
     },
     GroupingExpr(Box<Expr>),
-    LiteralExpr(Value),
+    LiteralExpr(Literal),
     UnaryExpr {
         operator: TokenKind,
         right: Box<Expr>,
@@ -53,6 +52,14 @@ pub enum Expr {
         callee: Box<Expr>,
         arguments: Vec<Box<Expr>>,
     },
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum Literal {
+    Number(f64),
+    String(String),
+    Boolean(bool),
+    Nil,
 }
 
 pub use Expr::*;

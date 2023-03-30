@@ -1,12 +1,11 @@
-use crate::ast::{Expr, Statement};
 use crate::func;
 use crate::func::{Callable, FunctionObject};
-use crate::token::TokenKind;
 use crate::value::{Object, Value};
 use anyhow::bail;
 use std::collections::HashMap;
 use std::fmt::Formatter;
 use std::sync::{Arc, Mutex};
+use syntax_tree::{Expr, Statement, TokenKind};
 
 #[derive(Debug)]
 pub struct Environment {
@@ -126,6 +125,7 @@ impl<'p> Interpreter<'p> {
                 }
             }
             Statement::Function { name, params, body } => {
+                // identifier resolution 을 별도 pass 없이 여기에서 해도 되지 않나
                 let closure = environment.clone();
                 environment.lock().unwrap().define_variable(
                     name,
@@ -197,7 +197,7 @@ impl<'p> Interpreter<'p> {
                 }
             }
             Expr::GroupingExpr(expr) => self.evaluate_expr(environment, expr)?,
-            Expr::LiteralExpr(lit) => lit.clone(),
+            Expr::LiteralExpr(lit) => lit.clone().into(),
             Expr::UnaryExpr { operator, right } => {
                 let rval = self.evaluate_expr(environment, right)?;
                 match (operator, rval) {
@@ -287,88 +287,3 @@ impl std::fmt::Display for ReturnError {
 }
 
 impl std::error::Error for ReturnError {}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::parser::Parser;
-    use crate::scanner::Scanner;
-
-    struct TestPrinter {
-        messages: Vec<String>,
-    }
-
-    impl TestPrinter {
-        fn new() -> Self {
-            Self {
-                messages: Vec::new(),
-            }
-        }
-    }
-
-    impl Printer for TestPrinter {
-        fn print(&mut self, message: &str) {
-            self.messages.push(message.to_owned());
-        }
-    }
-
-    fn print_from(source: &str) -> anyhow::Result<Vec<String>> {
-        let mut printer = TestPrinter::new();
-        let tokens = Scanner::new(source).scan_tokens()?;
-        let mut parser = Parser::new(tokens);
-        let statements = parser.parse()?;
-        let environment = Environment::new_globals_ptr();
-        let mut interpreter = Interpreter::new(&mut printer);
-        for s in statements {
-            interpreter.evaluate_stmt(&environment, &s)?;
-        }
-        Ok(printer.messages)
-    }
-
-    #[test]
-    fn test_source() {
-        let source = r"
-var a = 1;
-var b = 2;
-{
-    var a = 3;
-    var b = 4;
-    print a + b;
-}
-        ";
-
-        assert_eq!(vec!["Number(7.0)"], print_from(source).unwrap());
-    }
-
-    #[test]
-    fn test_closure() {
-        let source = r"
-fun counter() {
-    var c = 0;
-    fun inc() {
-        c = c + 1;
-        return c;
-    }
-    return inc;
-}
-var c = counter();
-c();
-print c();
-";
-        assert_eq!(vec!["Number(2.0)"], print_from(source).unwrap());
-    }
-
-    #[test]
-    fn test_recursion() {
-        let source = r"
-fun sum(x) {
-    if (x < 1) {
-        return 0;
-    }
-    return x + sum(x - 1);
-}
-print sum(4);
-";
-        assert_eq!(vec!["Number(10.0)"], print_from(source).unwrap());
-    }
-}

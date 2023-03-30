@@ -1,6 +1,5 @@
-use crate::token::{Token, TokenKind};
-use crate::value::Value;
 use anyhow::bail;
+use syntax_tree::*;
 
 pub struct Scanner {
     source: Vec<char>,
@@ -130,7 +129,7 @@ impl Scanner {
         let value = self.source[self.start + 1..self.current - 1]
             .iter()
             .collect::<String>();
-        self.add_literal_token(TokenKind::String, Value::String(value));
+        self.add_literal_token(TokenKind::String, Literal::String(value));
         Ok(())
     }
 
@@ -149,7 +148,7 @@ impl Scanner {
 
         let value_str: String = self.source[self.start..self.current].iter().collect();
         let value = value_str.parse::<f64>().unwrap();
-        self.add_literal_token(TokenKind::Number, Value::Number(value));
+        self.add_literal_token(TokenKind::Number, Literal::Number(value));
     }
 
     fn identifier(&mut self) {
@@ -191,11 +190,11 @@ impl Scanner {
         self._add_token(kind, None);
     }
 
-    fn add_literal_token(&mut self, kind: TokenKind, literal: Value) {
+    fn add_literal_token(&mut self, kind: TokenKind, literal: Literal) {
         self._add_token(kind, Some(literal));
     }
 
-    fn _add_token(&mut self, kind: TokenKind, literal: Option<Value>) {
+    fn _add_token(&mut self, kind: TokenKind, literal: Option<Literal>) {
         let lexeme = &self.source[self.start..self.current];
         self.tokens.push(Token {
             kind,

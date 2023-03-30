@@ -2,6 +2,7 @@ use crate::func::{FunctionObject, NativeFunction};
 use std::fmt::Debug;
 use std::ops::Deref;
 use std::sync::Arc;
+use syntax_tree::Literal;
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Value {
@@ -12,6 +13,17 @@ pub enum Value {
     NativeFunction(&'static NativeFunction),
     // TODO: object - garbage collection, etc.
     FunctionObject(Object<FunctionObject>),
+}
+
+impl From<Literal> for Value {
+    fn from(value: Literal) -> Self {
+        match value {
+            Literal::Number(value) => Self::Number(value),
+            Literal::String(value) => Self::String(value),
+            Literal::Boolean(value) => Self::Boolean(value),
+            Literal::Nil => Self::Nil,
+        }
+    }
 }
 
 // Arc is necessary due to the current implementation of return statement using anyhow::Error.

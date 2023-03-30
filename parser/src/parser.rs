@@ -1,11 +1,9 @@
-use crate::ast;
-use crate::token::{Token, TokenKind};
-use crate::value::Value;
 use anyhow::bail;
 use std::sync::Arc;
+use syntax_tree::*;
 
-type ParseExprResult = anyhow::Result<Box<ast::Expr>>;
-type ParseStmtResult = anyhow::Result<ast::Statement>;
+type ParseExprResult = anyhow::Result<Box<Expr>>;
+type ParseStmtResult = anyhow::Result<Statement>;
 
 pub struct Parser {
     tokens: Vec<Token>,
@@ -17,7 +15,7 @@ impl Parser {
         Self { tokens, current: 0 }
     }
 
-    pub fn parse(&mut self) -> anyhow::Result<Vec<ast::Statement>> {
+    pub fn parse(&mut self) -> anyhow::Result<Vec<Statement>> {
         let mut statements = Vec::new();
         while !self.is_at_end() {
             statements.push(self.parse_declaration()?);
@@ -50,7 +48,7 @@ impl Parser {
         };
 
         self.consume(&TokenKind::Semicolon, "Expect ';' after value.")?;
-        Ok(ast::Statement::Variable { id, expr })
+        Ok(Statement::Variable { id, expr })
     }
 
     fn parse_function_decl(&mut self) -> ParseStmtResult {
@@ -83,7 +81,7 @@ impl Parser {
         self.consume(&TokenKind::LeftBrace, "Expect '{' before function body.")?;
 
         let body = Arc::new(self.parse_block_statement()?);
-        Ok(ast::Statement::Function { name, params, body })
+        Ok(Statement::Function { name, params, body })
     }
 
     fn parse_statement(&mut self) -> ParseStmtResult {
@@ -107,13 +105,13 @@ impl Parser {
     fn parse_print_statement(&mut self) -> ParseStmtResult {
         let value = self.parse_expression()?;
         self.consume(&TokenKind::Semicolon, "Expect ';' after value.")?;
-        Ok(ast::Statement::Print(value))
+        Ok(Statement::Print(value))
     }
 
     fn parse_expression_statement(&mut self) -> ParseStmtResult {
         let value = self.parse_expression()?;
         self.consume(&TokenKind::Semicolon, "Expect ';' after value.")?;
-        Ok(ast::Statement::Expression(value))
+        Ok(Statement::Expression(value))
     }
 
     fn parse_block_statement(&mut self) -> ParseStmtResult {
@@ -122,7 +120,7 @@ impl Parser {
             statements.push(Box::new(self.parse_declaration()?));
         }
         self.consume(&TokenKind::RightBrace, "Expect '}' after block.")?;
-        Ok(ast::Statement::Block(statements))
+        Ok(Statement::Block(statements))
     }
 
     fn parse_if_statement(&mut self) -> ParseStmtResult {
@@ -135,7 +133,7 @@ impl Parser {
         } else {
             None
         };
-        Ok(ast::Statement::If {
+        Ok(Statement::If {
             condition,
             then_branch,
             else_branch,
@@ -148,7 +146,7 @@ impl Parser {
         self.consume(&TokenKind::RightParen, "Expect ')' after condition.")?;
         let body = Box::new(self.parse_statement()?);
 
-        Ok(ast::Statement::While { condition, body })
+        Ok(Statement::While { condition, body })
     }
 
     fn parse_for_statement(&mut self) -> ParseStmtResult {
@@ -180,20 +178,20 @@ impl Parser {
 
         // Desugaring
         if let Some(increment) = increment {
-            body = ast::Statement::Block(vec![
+            body = Statement::Block(vec![
                 Box::new(body),
-                Box::new(ast::Statement::Expression(increment)),
+                Box::new(Statement::Expression(increment)),
             ]);
         }
 
-        let condition = condition.unwrap_or(Box::new(ast::Expr::LiteralExpr(Value::Boolean(true))));
-        body = ast::Statement::While {
+        let condition = condition.unwrap_or(Box::new(Expr::LiteralExpr(Literal::Boolean(true))));
+        body = Statement::While {
             condition,
             body: Box::new(body),
         };
 
         if let Some(initializer) = initializer {
-            body = ast::Statement::Block(vec![Box::new(initializer), Box::new(body)]);
+            body = Statement::Block(vec![Box::new(initializer), Box::new(body)]);
         }
 
         Ok(body)
@@ -205,7 +203,7 @@ impl Parser {
             expr = Some(self.parse_expression()?);
         }
         self.consume(&TokenKind::Semicolon, "Expect ';' after return value.")?;
-        Ok(ast::Statement::Return(expr))
+        Ok(Statement::Return(expr))
     }
 
     /*
@@ -281,8 +279,8 @@ impl Parser {
             // Assign operator is right-associative
             let value = self.parse_assignment()?;
 
-            if let ast::Variable(name) = *expr {
-                return Ok(Box::new(ast::Expr::Assign(name, value)));
+            if let Variable(name) = *expr {
+                return Ok(Box::new(Expr::Assign(name, value)));
             }
 
             return Self::error(&equals, "Invalid assignment target.");
@@ -297,7 +295,7 @@ impl Parser {
         while self.match_(&[TokenKind::Or]) {
             let operator = self.previous().kind;
             let right = self.parse_and()?;
-            expr = Box::new(ast::Logical {
+            expr = Box::new(Logical {
                 left: expr,
                 operator,
                 right,
@@ -313,7 +311,7 @@ impl Parser {
         while self.match_(&[TokenKind::And]) {
             let operator = self.previous().kind;
             let right = self.parse_equality()?;
-            expr = Box::new(ast::Logical {
+            expr = Box::new(Logical {
                 left: expr,
                 operator,
                 right,
@@ -330,7 +328,8 @@ impl Parser {
         while self.match_(&[TokenKind::BangEqual, TokenKind::EqualEqual]) {
             let operator = self.previous().kind;
             let right = self.parse_comparison()?;
-            expr = Box::new(ast::BinaryExpr {
+
+            expr = Box::new(BinaryExpr {
                 left: expr,
                 operator,
                 right,
@@ -352,7 +351,7 @@ impl Parser {
         ]) {
             let operator = self.previous().kind;
             let right = self.parse_term()?;
-            expr = Box::new(ast::BinaryExpr {
+            expr = Box::new(BinaryExpr {
                 left: expr,
                 operator,
                 right,
@@ -369,7 +368,7 @@ impl Parser {
         while self.match_(&[TokenKind::Minus, TokenKind::Plus]) {
             let operator = self.previous().kind;
             let right = self.parse_factor()?;
-            expr = Box::new(ast::BinaryExpr {
+            expr = Box::new(BinaryExpr {
                 left: expr,
                 operator,
                 right,
@@ -386,7 +385,7 @@ impl Parser {
         while self.match_(&[TokenKind::Slash, TokenKind::Star]) {
             let operator = self.previous().kind;
             let right = self.parse_unary()?;
-            expr = Box::new(ast::BinaryExpr {
+            expr = Box::new(BinaryExpr {
                 left: expr,
                 operator,
                 right,
@@ -401,7 +400,7 @@ impl Parser {
         if self.match_(&[TokenKind::Bang, TokenKind::Minus]) {
             let operator = self.previous().kind;
             let right = self.parse_unary()?;
-            Ok(Box::new(ast::UnaryExpr { operator, right }))
+            Ok(Box::new(UnaryExpr { operator, right }))
         } else {
             self.parse_call()
         }
@@ -430,7 +429,7 @@ impl Parser {
 
                 self.consume(&TokenKind::RightParen, "Expect ')' after arguments")?;
 
-                expr = Box::new(ast::Call {
+                expr = Box::new(Call {
                     callee: expr,
                     arguments,
                 });
@@ -445,20 +444,20 @@ impl Parser {
     /// primary        → NUMBER | STRING | "true" | "false" | "nil"
     //                 | "(" expression ")" ;
     fn parse_primary(&mut self) -> ParseExprResult {
-        let expr: Box<ast::Expr> = if self.match_(&[TokenKind::Number, TokenKind::String]) {
-            Box::new(ast::LiteralExpr(self.previous().literal.clone().unwrap()))
+        let expr: Box<Expr> = if self.match_(&[TokenKind::Number, TokenKind::String]) {
+            Box::new(LiteralExpr(self.previous().literal.clone().unwrap()))
         } else if self.match_(&[TokenKind::True]) {
-            Box::new(ast::LiteralExpr(Value::Boolean(true)))
+            Box::new(LiteralExpr(Literal::Boolean(true)))
         } else if self.match_(&[TokenKind::False]) {
-            Box::new(ast::LiteralExpr(Value::Boolean(false)))
+            Box::new(LiteralExpr(Literal::Boolean(false)))
         } else if self.match_(&[TokenKind::Nil]) {
-            Box::new(ast::LiteralExpr(Value::Nil))
+            Box::new(LiteralExpr(Literal::Nil))
         } else if self.match_(&[TokenKind::LeftParen]) {
             let expr = self.parse_expression()?;
             self.consume(&TokenKind::RightParen, "Expect ')' after expression")?;
-            Box::new(ast::GroupingExpr(expr))
+            Box::new(GroupingExpr(expr))
         } else if self.match_(&[TokenKind::Identifier]) {
-            Box::new(ast::Variable(self.previous().lexeme.to_owned()))
+            Box::new(Variable(self.previous().lexeme.to_owned()))
         } else {
             return Self::error(self.peek(), "Expect expression.");
         };
