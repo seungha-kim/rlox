@@ -2,7 +2,7 @@ use anyhow::bail;
 use std::sync::Arc;
 use syntax_tree::*;
 
-type ParseExprResult = anyhow::Result<Box<Expr>>;
+type ParseExprResult = anyhow::Result<Expr>;
 type ParseStmtResult = anyhow::Result<Statement>;
 
 pub struct Parser {
@@ -37,7 +37,7 @@ impl Parser {
     }
 
     fn parse_variable_decl(&mut self) -> ParseStmtResult {
-        let id = self
+        let name = self
             .consume(&TokenKind::Identifier, "Expect variable name.")?
             .lexeme
             .to_owned();
@@ -48,7 +48,8 @@ impl Parser {
         };
 
         self.consume(&TokenKind::Semicolon, "Expect ';' after value.")?;
-        Ok(Statement::Variable { id, expr })
+
+        Ok(statement::Variable::new_wrapped(name, expr))
     }
 
     fn parse_function_decl(&mut self) -> ParseStmtResult {
@@ -81,7 +82,7 @@ impl Parser {
         self.consume(&TokenKind::LeftBrace, "Expect '{' before function body.")?;
 
         let body = Arc::new(self.parse_block_statement()?);
-        Ok(Statement::Function { name, params, body })
+        Ok(statement::Function::new_wrapped(name, params, body))
     }
 
     fn parse_statement(&mut self) -> ParseStmtResult {
@@ -105,48 +106,48 @@ impl Parser {
     fn parse_print_statement(&mut self) -> ParseStmtResult {
         let value = self.parse_expression()?;
         self.consume(&TokenKind::Semicolon, "Expect ';' after value.")?;
-        Ok(Statement::Print(value))
+        Ok(statement::Print::new_wrapped(value))
     }
 
     fn parse_expression_statement(&mut self) -> ParseStmtResult {
         let value = self.parse_expression()?;
         self.consume(&TokenKind::Semicolon, "Expect ';' after value.")?;
-        Ok(Statement::Expression(value))
+        Ok(statement::Expression::new_wrapped(value))
     }
 
     fn parse_block_statement(&mut self) -> ParseStmtResult {
         let mut statements = Vec::new();
         while !self.check(&TokenKind::RightBrace) && !self.is_at_end() {
-            statements.push(Box::new(self.parse_declaration()?));
+            statements.push(self.parse_declaration()?);
         }
         self.consume(&TokenKind::RightBrace, "Expect '}' after block.")?;
-        Ok(Statement::Block(statements))
+        Ok(statement::Block::new_wrapped(statements))
     }
 
     fn parse_if_statement(&mut self) -> ParseStmtResult {
         self.consume(&TokenKind::LeftParen, "Expect '(' after 'if'.")?;
         let condition = self.parse_expression()?;
         self.consume(&TokenKind::RightParen, "Expect ')' after if condition.")?;
-        let then_branch = Box::new(self.parse_statement()?);
+        let then_branch = self.parse_statement()?;
         let else_branch = if self.match_(&[TokenKind::Else]) {
-            Some(Box::new(self.parse_statement()?))
+            Some(self.parse_statement()?)
         } else {
             None
         };
-        Ok(Statement::If {
+        Ok(statement::If::new_wrapped(
             condition,
             then_branch,
             else_branch,
-        })
+        ))
     }
 
     fn parse_while_statement(&mut self) -> ParseStmtResult {
         self.consume(&TokenKind::LeftParen, "Expect '(' after 'while'.")?;
         let condition = self.parse_expression()?;
         self.consume(&TokenKind::RightParen, "Expect ')' after condition.")?;
-        let body = Box::new(self.parse_statement()?);
+        let body = self.parse_statement()?;
 
-        Ok(Statement::While { condition, body })
+        Ok(statement::While::new_wrapped(condition, body))
     }
 
     fn parse_for_statement(&mut self) -> ParseStmtResult {
@@ -178,20 +179,17 @@ impl Parser {
 
         // Desugaring
         if let Some(increment) = increment {
-            body = Statement::Block(vec![
-                Box::new(body),
-                Box::new(Statement::Expression(increment)),
+            body = statement::Block::new_wrapped(vec![
+                body,
+                statement::Expression::new_wrapped(increment),
             ]);
         }
 
-        let condition = condition.unwrap_or(Box::new(Expr::LiteralExpr(Literal::Boolean(true))));
-        body = Statement::While {
-            condition,
-            body: Box::new(body),
-        };
+        let condition = condition.unwrap_or(expr::Literal::new_wrapped(Literal::Boolean(true)));
+        body = statement::While::new_wrapped(condition, body);
 
         if let Some(initializer) = initializer {
-            body = Statement::Block(vec![Box::new(initializer), Box::new(body)]);
+            body = statement::Block::new_wrapped(vec![initializer, body]);
         }
 
         Ok(body)
@@ -203,7 +201,7 @@ impl Parser {
             expr = Some(self.parse_expression()?);
         }
         self.consume(&TokenKind::Semicolon, "Expect ';' after return value.")?;
-        Ok(Statement::Return(expr))
+        Ok(statement::Return::new_wrapped(expr))
     }
 
     /*
@@ -279,8 +277,8 @@ impl Parser {
             // Assign operator is right-associative
             let value = self.parse_assignment()?;
 
-            if let Variable(name) = *expr {
-                return Ok(Box::new(Expr::Assign(name, value)));
+            if let Expr::Variable(var) = expr {
+                return Ok(expr::Assign::new_wrapped(var.name, value));
             }
 
             return Self::error(&equals, "Invalid assignment target.");
@@ -295,11 +293,7 @@ impl Parser {
         while self.match_(&[TokenKind::Or]) {
             let operator = self.previous().kind;
             let right = self.parse_and()?;
-            expr = Box::new(Logical {
-                left: expr,
-                operator,
-                right,
-            });
+            expr = expr::Logical::new_wrapped(expr, operator, right);
         }
 
         Ok(expr)
@@ -311,11 +305,7 @@ impl Parser {
         while self.match_(&[TokenKind::And]) {
             let operator = self.previous().kind;
             let right = self.parse_equality()?;
-            expr = Box::new(Logical {
-                left: expr,
-                operator,
-                right,
-            });
+            expr = expr::Logical::new_wrapped(expr, operator, right);
         }
 
         Ok(expr)
@@ -329,11 +319,7 @@ impl Parser {
             let operator = self.previous().kind;
             let right = self.parse_comparison()?;
 
-            expr = Box::new(BinaryExpr {
-                left: expr,
-                operator,
-                right,
-            });
+            expr = expr::Binary::new_wrapped(expr, operator, right);
         }
 
         return Ok(expr);
@@ -351,11 +337,7 @@ impl Parser {
         ]) {
             let operator = self.previous().kind;
             let right = self.parse_term()?;
-            expr = Box::new(BinaryExpr {
-                left: expr,
-                operator,
-                right,
-            });
+            expr = expr::Binary::new_wrapped(expr, operator, right);
         }
 
         return Ok(expr);
@@ -368,11 +350,7 @@ impl Parser {
         while self.match_(&[TokenKind::Minus, TokenKind::Plus]) {
             let operator = self.previous().kind;
             let right = self.parse_factor()?;
-            expr = Box::new(BinaryExpr {
-                left: expr,
-                operator,
-                right,
-            });
+            expr = expr::Binary::new_wrapped(expr, operator, right);
         }
 
         return Ok(expr);
@@ -385,11 +363,7 @@ impl Parser {
         while self.match_(&[TokenKind::Slash, TokenKind::Star]) {
             let operator = self.previous().kind;
             let right = self.parse_unary()?;
-            expr = Box::new(BinaryExpr {
-                left: expr,
-                operator,
-                right,
-            });
+            expr = expr::Binary::new_wrapped(expr, operator, right);
         }
 
         return Ok(expr);
@@ -400,7 +374,7 @@ impl Parser {
         if self.match_(&[TokenKind::Bang, TokenKind::Minus]) {
             let operator = self.previous().kind;
             let right = self.parse_unary()?;
-            Ok(Box::new(UnaryExpr { operator, right }))
+            Ok(expr::Unary::new_wrapped(operator, right))
         } else {
             self.parse_call()
         }
@@ -429,10 +403,7 @@ impl Parser {
 
                 self.consume(&TokenKind::RightParen, "Expect ')' after arguments")?;
 
-                expr = Box::new(Call {
-                    callee: expr,
-                    arguments,
-                });
+                expr = expr::Call::new_wrapped(expr, arguments);
             } else {
                 break;
             }
@@ -444,20 +415,20 @@ impl Parser {
     /// primary        → NUMBER | STRING | "true" | "false" | "nil"
     //                 | "(" expression ")" ;
     fn parse_primary(&mut self) -> ParseExprResult {
-        let expr: Box<Expr> = if self.match_(&[TokenKind::Number, TokenKind::String]) {
-            Box::new(LiteralExpr(self.previous().literal.clone().unwrap()))
+        let expr: Expr = if self.match_(&[TokenKind::Number, TokenKind::String]) {
+            expr::Literal::new_wrapped(self.previous().literal.clone().unwrap())
         } else if self.match_(&[TokenKind::True]) {
-            Box::new(LiteralExpr(Literal::Boolean(true)))
+            expr::Literal::new_wrapped(Literal::Boolean(true))
         } else if self.match_(&[TokenKind::False]) {
-            Box::new(LiteralExpr(Literal::Boolean(false)))
+            expr::Literal::new_wrapped(Literal::Boolean(false))
         } else if self.match_(&[TokenKind::Nil]) {
-            Box::new(LiteralExpr(Literal::Nil))
+            expr::Literal::new_wrapped(Literal::Nil)
         } else if self.match_(&[TokenKind::LeftParen]) {
             let expr = self.parse_expression()?;
             self.consume(&TokenKind::RightParen, "Expect ')' after expression")?;
-            Box::new(GroupingExpr(expr))
+            expr::Grouping::new_wrapped(expr)
         } else if self.match_(&[TokenKind::Identifier]) {
-            Box::new(Variable(self.previous().lexeme.to_owned()))
+            expr::Variable::new_wrapped(self.previous().lexeme.to_owned())
         } else {
             return Self::error(self.peek(), "Expect expression.");
         };

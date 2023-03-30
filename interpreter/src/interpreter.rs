@@ -86,59 +86,58 @@ impl<'p> Interpreter<'p> {
     ) -> anyhow::Result<()> {
         match stmt {
             Statement::Expression(expr) => {
-                self.evaluate_expr(environment, expr)?;
+                self.evaluate_expr(environment, &expr.expr)?;
             }
             Statement::Print(expr) => {
-                let value = self.evaluate_expr(environment, expr)?;
+                let value = self.evaluate_expr(environment, &expr.expr)?;
                 self.printer.print(&format!("{:?}", value));
             }
-            Statement::Variable { id, expr } => {
-                let value = if let Some(expr) = expr {
-                    self.evaluate_expr(environment, expr)?
+            Statement::Variable(var) => {
+                let value = if let Some(expr) = &var.expr {
+                    self.evaluate_expr(environment, &expr)?
                 } else {
                     Value::Nil
                 };
-                environment.lock().unwrap().define_variable(id, value)?;
+                environment
+                    .lock()
+                    .unwrap()
+                    .define_variable(&var.name, value)?;
             }
-            Statement::Block(ss) => {
+            Statement::Block(block) => {
                 let environment = Environment::new_ptr(environment.clone());
 
-                for s in ss {
+                for s in &block.statements {
                     self.evaluate_stmt(&environment, s)?;
                 }
             }
-            Statement::If {
-                condition,
-                then_branch,
-                else_branch,
-            } => {
-                let condition = self.evaluate_expr(environment, condition)?;
+            Statement::If(s) => {
+                let condition = self.evaluate_expr(environment, &s.condition)?;
                 if Self::is_truthy(&condition) {
-                    self.evaluate_stmt(environment, then_branch)?;
-                } else if let Some(else_branch) = else_branch {
+                    self.evaluate_stmt(environment, &s.then_branch)?;
+                } else if let Some(else_branch) = &s.else_branch {
                     self.evaluate_stmt(environment, else_branch)?;
                 }
             }
-            Statement::While { condition, body } => {
-                while Self::is_truthy(&self.evaluate_expr(environment, condition)?) {
-                    self.evaluate_stmt(environment, body)?;
+            Statement::While(s) => {
+                while Self::is_truthy(&self.evaluate_expr(environment, &s.condition)?) {
+                    self.evaluate_stmt(environment, &s.body)?;
                 }
             }
-            Statement::Function { name, params, body } => {
+            Statement::Function(s) => {
                 // identifier resolution 을 별도 pass 없이 여기에서 해도 되지 않나
                 let closure = environment.clone();
                 environment.lock().unwrap().define_variable(
-                    name,
+                    &s.name,
                     Value::FunctionObject(Object::new(FunctionObject {
-                        name: name.to_owned(),
-                        parameters: params.to_owned(),
-                        body: body.clone(),
+                        name: s.name.to_owned(),
+                        parameters: s.params.to_owned(),
+                        body: s.body.clone(),
                         closure,
                     })),
                 )?;
             }
             Statement::Return(expr) => {
-                let value = if let Some(expr) = expr {
+                let value = if let Some(expr) = &expr.value {
                     self.evaluate_expr(environment, expr)?
                 } else {
                     Value::Nil
@@ -156,15 +155,11 @@ impl<'p> Interpreter<'p> {
         expr: &Expr,
     ) -> anyhow::Result<Value> {
         let result = match expr {
-            Expr::BinaryExpr {
-                left,
-                operator,
-                right,
-            } => {
-                let lval = self.evaluate_expr(environment, left)?;
-                let rval = self.evaluate_expr(environment, right)?;
+            Expr::Binary(expr) => {
+                let lval = self.evaluate_expr(environment, &expr.left)?;
+                let rval = self.evaluate_expr(environment, &expr.right)?;
 
-                match (lval, operator, rval) {
+                match (lval, expr.operator, rval) {
                     (Value::Number(l), TokenKind::Plus, Value::Number(r)) => Value::Number(l + r),
                     (Value::String(mut l), TokenKind::Plus, Value::String(r)) => {
                         l.push_str(&r);
@@ -196,11 +191,11 @@ impl<'p> Interpreter<'p> {
                     }
                 }
             }
-            Expr::GroupingExpr(expr) => self.evaluate_expr(environment, expr)?,
-            Expr::LiteralExpr(lit) => lit.clone().into(),
-            Expr::UnaryExpr { operator, right } => {
-                let rval = self.evaluate_expr(environment, right)?;
-                match (operator, rval) {
+            Expr::Grouping(expr) => self.evaluate_expr(environment, &expr.expr)?,
+            Expr::Literal(expr) => expr.literal.clone().into(),
+            Expr::Unary(expr) => {
+                let rval = self.evaluate_expr(environment, &expr.right)?;
+                match (expr.operator, rval) {
                     (TokenKind::Minus, Value::Number(n)) => Value::Number(-n),
                     (TokenKind::Bang, rval) => Value::Boolean(Self::is_truthy(&rval)),
                     (op, r) => {
@@ -208,28 +203,27 @@ impl<'p> Interpreter<'p> {
                     }
                 }
             }
-            Expr::Variable(id) => environment.lock().unwrap().get_variable(id)?,
-            Expr::Assign(name, expr) => {
-                let value = self.evaluate_expr(environment, expr)?;
-                environment.lock().unwrap().assign_variable(name, &value)?;
+            Expr::Variable(expr) => environment.lock().unwrap().get_variable(&expr.name)?,
+            Expr::Assign(expr) => {
+                let value = self.evaluate_expr(environment, &expr.value)?;
+                environment
+                    .lock()
+                    .unwrap()
+                    .assign_variable(&expr.name, &value)?;
                 value
             }
-            Expr::Logical {
-                left,
-                operator,
-                right,
-            } => {
-                let left = self.evaluate_expr(environment, left)?;
-                match operator {
+            Expr::Logical(expr) => {
+                let left = self.evaluate_expr(environment, &expr.left)?;
+                match expr.operator {
                     TokenKind::Or if Self::is_truthy(&left) => left,
                     TokenKind::And if !Self::is_truthy(&left) => left,
-                    _ => self.evaluate_expr(environment, right)?,
+                    _ => self.evaluate_expr(environment, &expr.right)?,
                 }
             }
-            Expr::Call { callee, arguments } => {
-                let callable = self.evaluate_expr(environment, callee)?;
+            Expr::Call(expr) => {
+                let callable = self.evaluate_expr(environment, &expr.callee)?;
                 let mut arg_values = Vec::new();
-                for arg in arguments {
+                for arg in &expr.arguments {
                     arg_values.push(self.evaluate_expr(environment, arg)?);
                 }
 

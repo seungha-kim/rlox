@@ -7,4 +7,5 @@ edition = "2021"
 proc-macro = true
 
 [dependencies]
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+proc-macro2 = "1.0.54"
+derive-impl = { path = "../derive-impl" }
