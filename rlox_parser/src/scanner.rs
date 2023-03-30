@@ -1,5 +1,5 @@
 use anyhow::bail;
-use syntax_tree::*;
+use rlox_syntax::*;
 
 pub struct Scanner {
     source: Vec<char>,

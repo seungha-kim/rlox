@@ -1,6 +1,6 @@
 pub use uuid::Uuid;
 
-pub use derive::*;
+pub use rlox_derive::*;
 
 pub type Ptr<T> = Box<T>;
 

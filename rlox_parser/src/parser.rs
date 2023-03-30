@@ -1,6 +1,6 @@
 use anyhow::bail;
+use rlox_syntax::*;
 use std::sync::Arc;
-use syntax_tree::*;
 
 type ParseExprResult = anyhow::Result<Expr>;
 type ParseStmtResult = anyhow::Result<Statement>;

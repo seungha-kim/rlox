@@ -1,5 +1,5 @@
-use interpreter::{Environment, Interpreter, StdOutPrinter};
-use parser::{Parser, Scanner};
+use rlox_interpreter::{Environment, Interpreter, StdOutPrinter};
+use rlox_parser::{Parser, Scanner};
 use std::io::{BufRead, Write};
 
 fn main() -> anyhow::Result<()> {

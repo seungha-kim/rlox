@@ -1,9 +1,6 @@
 use proc_macro2::TokenStream;
 use quote::{quote, ToTokens};
-use syn::{
-    parse_macro_input, Data, DataStruct, DeriveInput, Field, Fields, Ident, Item, ItemStruct, Path,
-    Token,
-};
+use syn::{Field, Fields, ItemStruct, Path};
 
 // refer to https://github.com/dtolnay/syn/blob/master/examples/heapsize/heapsize_derive/src/lib.rs
 

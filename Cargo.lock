@@ -15,23 +15,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "baf1de4339761588bc0619e3cbc0120ee582ebb74b53b4efbf79117bd2da40fd"
 
 [[package]]
-name = "derive"
-version = "0.1.0"
-dependencies = [
- "derive-impl",
- "proc-macro2",
-]
-
-[[package]]
-name = "derive-impl"
-version = "0.1.0"
-dependencies = [
- "proc-macro2",
- "quote",
- "syn 2.0.11",
-]
-
-[[package]]
 name = "getrandom"
 version = "0.2.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -43,26 +26,10 @@ dependencies = [
 ]
 
 [[package]]
-name = "interpreter"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "syntax-tree",
-]
-
-[[package]]
 name = "libc"
 version = "0.2.140"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "99227334921fae1a979cf0bfdfcc6b3e5ce376ef57e16fb6fb3ea2ed6095f80c"
-
-[[package]]
-name = "parser"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "syntax-tree",
-]
 
 [[package]]
 name = "ppv-lite86"
@@ -119,13 +86,54 @@ dependencies = [
 ]
 
 [[package]]
-name = "repl"
+name = "rlox_derive"
+version = "0.1.0"
+dependencies = [
+ "proc-macro2",
+ "rlox_derive_impl",
+]
+
+[[package]]
+name = "rlox_derive_impl"
+version = "0.1.0"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 2.0.11",
+]
+
+[[package]]
+name = "rlox_interpreter"
 version = "0.1.0"
 dependencies = [
  "anyhow",
- "interpreter",
- "parser",
- "syntax-tree",
+ "rlox_syntax",
+]
+
+[[package]]
+name = "rlox_parser"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "rlox_syntax",
+]
+
+[[package]]
+name = "rlox_repl"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "rlox_interpreter",
+ "rlox_parser",
+ "rlox_syntax",
+]
+
+[[package]]
+name = "rlox_syntax"
+version = "0.1.0"
+dependencies = [
+ "rlox_derive",
+ "uuid",
 ]
 
 [[package]]
@@ -148,14 +156,6 @@ dependencies = [
  "proc-macro2",
  "quote",
  "unicode-ident",
-]
-
-[[package]]
-name = "syntax-tree"
-version = "0.1.0"
-dependencies = [
- "derive",
- "uuid",
 ]
 
 [[package]]

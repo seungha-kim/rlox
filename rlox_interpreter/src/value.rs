@@ -1,8 +1,8 @@
 use crate::func::{FunctionObject, NativeFunction};
+use rlox_syntax::Literal;
 use std::fmt::Debug;
 use std::ops::Deref;
 use std::sync::Arc;
-use syntax_tree::Literal;
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Value {

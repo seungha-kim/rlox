@@ -1,12 +1,12 @@
 [workspace]
 resolver = "2"
 members = [
-    "syntax-tree",
-    "parser",
-    "interpreter",
-    "derive",
-    "derive-impl",
-    "repl",
+    "rlox_syntax",
+    "rlox_parser",
+    "rlox_interpreter",
+    "rlox_derive",
+    "rlox_derive_impl",
+    "rlox_repl",
 ]
 
 [workspace.dependencies]

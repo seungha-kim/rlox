@@ -2,10 +2,10 @@ use crate::func;
 use crate::func::{Callable, FunctionObject};
 use crate::value::{Object, Value};
 use anyhow::bail;
+use rlox_syntax::{Expr, Statement, TokenKind};
 use std::collections::HashMap;
 use std::fmt::Formatter;
 use std::sync::{Arc, Mutex};
-use syntax_tree::{Expr, Statement, TokenKind};
 
 #[derive(Debug)]
 pub struct Environment {
