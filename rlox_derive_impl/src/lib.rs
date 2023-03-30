@@ -27,7 +27,7 @@ pub fn syntax_node(attr: TokenStream, input: TokenStream) -> TokenStream {
     for f in fields {
         let ident_name = f.ident.to_token_stream().to_string();
         let ty_name = f.ty.to_token_stream().to_string();
-        if ident_name == "id" && ty_name == "Uuid" {
+        if ident_name == "id" && ty_name == "usize" {
             id_field = Some(f);
         } else {
             arg_fields.push(f);
@@ -35,7 +35,7 @@ pub fn syntax_node(attr: TokenStream, input: TokenStream) -> TokenStream {
     }
 
     if id_field.is_none() {
-        panic!("SyntaxNode must have a field named 'id' of type 'Uuid'");
+        panic!("SyntaxNode must have a field named 'id' of type 'usize'");
     }
 
     let params = arg_fields.iter().map(|f| {
@@ -57,7 +57,7 @@ pub fn syntax_node(attr: TokenStream, input: TokenStream) -> TokenStream {
         #input
 
         impl SyntaxNode for #name {
-            fn id(&self) -> Uuid {
+            fn id(&self) -> usize {
                 self.id
             }
         }
@@ -65,7 +65,7 @@ pub fn syntax_node(attr: TokenStream, input: TokenStream) -> TokenStream {
         impl #name {
             pub fn new_wrapped(#(#params),*) -> #enum_name {
                 #path(Ptr::new(Self {
-                    id: Uuid::new_v4(),
+                    id: Self::generate_id(),
                     #(#args),*
                 }))
             }
@@ -85,7 +85,7 @@ mod tests {
         let input = quote! {
             #[derive(Debug)]
             struct Foo {
-                id: Uuid,
+                id: usize,
                 bar: String,
                 baz: i32,
             }
@@ -95,13 +95,13 @@ mod tests {
         let expected = quote! {
             #[derive(Debug)]
             struct Foo {
-                id: Uuid,
+                id: usize,
                 bar: String,
                 baz: i32,
             }
 
             impl SyntaxNode for Foo {
-                fn id(&self) -> Uuid {
+                fn id(&self) -> usize {
                     self.id
                 }
             }
@@ -109,7 +109,7 @@ mod tests {
             impl Foo {
                 pub fn new_wrapped(bar: String, baz: i32) -> Enum {
                     Enum::Variant(Ptr::new(Self {
-                        id: Uuid::new_v4(),
+                        id: Self::generate_id(),
                         bar,
                         baz // comma missing. unwanted, but it's ok
                     }))
