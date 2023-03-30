@@ -71,7 +71,7 @@ pub fn syntax_node(attr: TokenStream, input: TokenStream) -> TokenStream {
             }
         }
     };
-    output.into()
+    output
 }
 
 #[cfg(test)]
