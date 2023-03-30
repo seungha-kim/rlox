@@ -1,4 +1,4 @@
-use std::sync::atomic::AtomicUsize;
+use std::sync::atomic::{AtomicUsize, Ordering};
 
 pub use rlox_derive::*;
 
@@ -10,7 +10,7 @@ pub trait SyntaxNode {
     fn id(&self) -> usize;
 
     fn generate_id() -> usize {
-        let result = ID.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        let result = ID.fetch_add(1, Ordering::SeqCst);
         if result == usize::MAX {
             panic!("ID overflow");
         }
