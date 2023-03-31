@@ -46,7 +46,6 @@ impl Callable for FunctionObject {
                 env.define_variable(param, arg.clone())?;
             }
         }
-        interpreter.evaluate_stmt(&environment, &self.body)?;
         interpreter.evaluate_stmt(&environment, &self.body.read().unwrap())?;
 
         Ok(Value::Nil)

@@ -1,6 +1,6 @@
 use anyhow::bail;
 use rlox_syntax::*;
-use std::sync::{Arc, Mutex, RwLock};
+use std::sync::{Arc, RwLock};
 
 type ParseExprResult = anyhow::Result<Expr>;
 type ParseStmtResult = anyhow::Result<Statement>;

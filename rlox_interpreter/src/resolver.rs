@@ -57,6 +57,12 @@ impl Resolver {
                 self.resolve_expression(scope, &mut stmt.expr)?;
             }
             Statement::VariableDecl(stmt) => {
+                if scope.borrow().variables.contains_key(&stmt.name) {
+                    bail!(
+                        "Already a variable with this name in this scope: {}",
+                        stmt.name
+                    )
+                }
                 scope
                     .borrow_mut()
                     .variables
@@ -159,6 +165,21 @@ mod tests {
     use super::*;
     use rlox_parser::{Parser, Scanner};
 
+    fn parse(source: &str) -> anyhow::Result<Vec<Statement>> {
+        let tokens = Scanner::new(source).scan_tokens()?;
+        let mut stmts = Parser::new(tokens).parse()?;
+        Ok(stmts)
+    }
+
+    fn resolve(stmts: &mut Vec<Statement>) -> anyhow::Result<()> {
+        let mut resolver = Resolver;
+        let scope = Scope::new_ptr(None);
+        for s in stmts {
+            resolver.resolve_statement(&scope, s)?;
+        }
+        Ok(())
+    }
+
     #[test]
     fn test_static_scope() -> anyhow::Result<()> {
         let source = r#"
@@ -173,13 +194,8 @@ var a = "global";
 }
         "#;
 
-        let tokens = Scanner::new(source).scan_tokens()?;
-        let mut stmts = Parser::new(tokens).parse()?;
-        let mut resolver = Resolver;
-        let scope = Scope::new_ptr(None);
-        for s in &mut stmts {
-            resolver.resolve_statement(&scope, s)?;
-        }
+        let mut stmts = parse(source)?;
+        resolve(&mut stmts)?;
 
         fn visit_statement(stmt: &Statement, print_count: &mut usize) {
             match stmt {
@@ -239,17 +255,9 @@ fun noop() {}
 noop();
         "#;
 
-        let tokens = Scanner::new(source).scan_tokens()?;
-        let mut stmts = Parser::new(tokens).parse()?;
-
+        let mut stmts = parse(source)?;
         let before = format!("{:?}", stmts);
-
-        let mut resolver = Resolver;
-        let scope = Scope::new_ptr(None);
-        for s in &mut stmts {
-            resolver.resolve_statement(&scope, s)?;
-        }
-
+        resolve(&mut stmts)?;
         let after = format!("{:?}", stmts);
         assert_eq!(before, after);
         Ok(())
@@ -262,19 +270,26 @@ fun noop() {}
 { noop(); }
         "#;
 
-        let tokens = Scanner::new(source).scan_tokens()?;
-        let mut stmts = Parser::new(tokens).parse()?;
-
+        let mut stmts = parse(source)?;
         let before = format!("{:?}", stmts);
-
-        let mut resolver = Resolver;
-        let scope = Scope::new_ptr(None);
-        for s in &mut stmts {
-            resolver.resolve_statement(&scope, s)?;
-        }
-
+        resolve(&mut stmts)?;
         let after = format!("{:?}", stmts);
         assert_ne!(before, after);
+        Ok(())
+    }
+
+    #[test]
+    fn test_no_two_variables_with_same_name_cannot_exist() -> anyhow::Result<()> {
+        let source = r#"
+var a = 1;
+var a = 2;
+        "#;
+
+        let mut stmts = parse(source)?;
+        let result = resolve(&mut stmts);
+        // TODO: enum for error needed to check exactly what the error is.
+        assert!(result.is_err());
+        assert!(result.err().unwrap().to_string().contains("Already"));
         Ok(())
     }
 }

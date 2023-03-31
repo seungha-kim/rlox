@@ -16,7 +16,7 @@ pub enum Statement {
 
 pub mod statement {
     use super::*;
-    use std::sync::{Mutex, RwLock};
+    use std::sync::RwLock;
 
     #[syntax_node(Statement::Expression)]
     #[derive(Debug)]
