@@ -292,4 +292,27 @@ var a = 2;
         assert!(result.err().unwrap().to_string().contains("Already"));
         Ok(())
     }
+
+    #[test]
+    fn test_try_to_initialize_self() -> anyhow::Result<()> {
+        let source = "var a = a;";
+        let mut stmts = parse(source)?;
+        let result = resolve(&mut stmts);
+        assert!(result.is_err());
+        assert!(result.err().unwrap().to_string().contains("undefined"));
+        Ok(())
+    }
+
+    #[test]
+    fn test_try_to_initialize_with_same_name() -> anyhow::Result<()> {
+        let source = r#"
+var a = 1;
+{
+    var a = a;
+}
+"#;
+        let mut stmts = parse(source)?;
+        resolve(&mut stmts)?;
+        Ok(())
+    }
 }
