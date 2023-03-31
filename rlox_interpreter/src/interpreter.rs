@@ -1,10 +1,9 @@
 use crate::func;
 use crate::func::{Callable, FunctionObject};
-use crate::resolver::{Resolver, Scope, ScopePtr};
 use crate::value::{Object, Value};
 use anyhow::bail;
 use rlox_syntax::{Expr, Statement, TokenKind};
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use std::fmt::Formatter;
 use std::sync::{Arc, Mutex};
 
@@ -75,18 +74,11 @@ impl Environment {
 
 pub struct Interpreter<'p> {
     printer: &'p mut dyn Printer,
-    global_scope: ScopePtr,
-    resolved: HashSet<usize>,
 }
 
 impl<'p> Interpreter<'p> {
     pub fn new(printer: &'p mut dyn Printer) -> Self {
-        Self {
-            printer,
-            // TODO: global symbols
-            global_scope: Scope::new_ptr(None),
-            resolved: HashSet::new(),
-        }
+        Self { printer }
     }
 
     pub fn evaluate_stmt(

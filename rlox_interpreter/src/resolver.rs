@@ -167,7 +167,7 @@ mod tests {
 
     fn parse(source: &str) -> anyhow::Result<Vec<Statement>> {
         let tokens = Scanner::new(source).scan_tokens()?;
-        let mut stmts = Parser::new(tokens).parse()?;
+        let stmts = Parser::new(tokens).parse()?;
         Ok(stmts)
     }
 
@@ -199,7 +199,7 @@ var a = "global";
 
         fn visit_statement(stmt: &Statement, print_count: &mut usize) {
             match stmt {
-                Statement::Expression(stmt) => {}
+                Statement::Expression(_stmt) => {}
                 Statement::Print(stmt) => {
                     *print_count += 1;
                     let Expr::Variable(expr ) = &stmt.expr else {
@@ -213,7 +213,7 @@ var a = "global";
                         panic!("Weird variable name?")
                     }
                 }
-                Statement::VariableDecl(stmt) => {}
+                Statement::VariableDecl(_stmt) => {}
                 Statement::Block(stmt) => {
                     for stmt in &stmt.statements {
                         visit_statement(stmt, print_count);
@@ -231,7 +231,7 @@ var a = "global";
                 Statement::Function(stmt) => {
                     visit_statement(&stmt.body.read().unwrap(), print_count);
                 }
-                Statement::Return(stmt) => {}
+                Statement::Return(_stmt) => {}
             }
         }
 
