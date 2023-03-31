@@ -4,7 +4,7 @@ use anyhow::bail;
 use rlox_syntax::Statement;
 use std::cmp::Ordering;
 use std::fmt::{Debug, Formatter};
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, RwLock};
 
 pub trait Callable {
     fn arity(&self) -> usize;
@@ -14,7 +14,8 @@ pub trait Callable {
 pub struct FunctionObject {
     pub name: String,
     pub parameters: Vec<String>,
-    pub body: Arc<Statement>,
+    // RwLock needed to support recursive call
+    pub body: Arc<RwLock<Statement>>,
     pub closure: Arc<Mutex<Environment>>,
 }
 
@@ -29,6 +30,7 @@ impl Callable for FunctionObject {
         self.parameters.len()
     }
 
+    // TODO: leaky interpreter
     fn call(&self, interpreter: &mut Interpreter, args: &[Value]) -> anyhow::Result<Value> {
         match args.len().cmp(&self.arity()) {
             Ordering::Less => bail!("More args must be given"),
@@ -45,6 +47,7 @@ impl Callable for FunctionObject {
             }
         }
         interpreter.evaluate_stmt(&environment, &self.body)?;
+        interpreter.evaluate_stmt(&environment, &self.body.read().unwrap())?;
 
         Ok(Value::Nil)
     }

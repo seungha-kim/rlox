@@ -6,7 +6,7 @@ use std::sync::Arc;
 pub enum Statement {
     Expression(Ptr<statement::Expression>),
     Print(Ptr<statement::Print>),
-    Variable(Ptr<statement::Variable>),
+    VariableDecl(Ptr<statement::VariableDecl>),
     Block(Ptr<statement::Block>),
     If(Ptr<statement::If>),
     While(Ptr<statement::While>),
@@ -16,6 +16,7 @@ pub enum Statement {
 
 pub mod statement {
     use super::*;
+    use std::sync::{Mutex, RwLock};
 
     #[syntax_node(Statement::Expression)]
     #[derive(Debug)]
@@ -31,9 +32,9 @@ pub mod statement {
         pub expr: Expr,
     }
 
-    #[syntax_node(Statement::Variable)]
+    #[syntax_node(Statement::VariableDecl)]
     #[derive(Debug)]
-    pub struct Variable {
+    pub struct VariableDecl {
         pub id: usize,
         pub name: String,
         pub expr: Option<Expr>,
@@ -52,7 +53,7 @@ pub mod statement {
         pub id: usize,
         pub name: String,
         pub params: Vec<String>,
-        pub body: Arc<Statement>,
+        pub body: Arc<RwLock<Statement>>,
     }
 
     #[syntax_node(Statement::If)]
@@ -119,6 +120,8 @@ pub mod expr {
     pub struct Variable {
         pub id: usize,
         pub name: String,
+        // How many levels should be escalated to resolve this variable
+        pub resolution: usize,
     }
 
     #[syntax_node(Expr::Assign)]
@@ -127,6 +130,10 @@ pub mod expr {
         pub id: usize,
         pub name: String,
         pub value: Expr,
+        // TODO: There are more things to which values can be assigned
+        // e.g. instance.method()
+        // How many levels should be escalated to resolve this variable
+        pub resolution: usize,
     }
 
     #[syntax_node(Expr::Logical)]

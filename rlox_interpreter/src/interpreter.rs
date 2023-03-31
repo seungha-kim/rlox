@@ -1,9 +1,10 @@
 use crate::func;
 use crate::func::{Callable, FunctionObject};
+use crate::resolver::{Resolver, Scope, ScopePtr};
 use crate::value::{Object, Value};
 use anyhow::bail;
 use rlox_syntax::{Expr, Statement, TokenKind};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::fmt::Formatter;
 use std::sync::{Arc, Mutex};
 
@@ -40,16 +41,18 @@ impl Environment {
         zelf
     }
 
-    pub fn get_variable(&self, name: &str) -> anyhow::Result<Value> {
-        let value = if let Some(value) = self.variables.get(name) {
-            value.clone()
+    pub fn get_variable(&self, name: &str, resolution: usize) -> anyhow::Result<Value> {
+        if resolution == 0 {
+            if let Some(value) = self.variables.get(name) {
+                Ok(value.clone())
+            } else {
+                panic!("Failed to resolve variable: {}", name);
+            }
         } else if let Some(parent) = &self.parent {
-            parent.lock().unwrap().get_variable(name)?
+            Ok(parent.lock().unwrap().get_variable(name, resolution - 1)?)
         } else {
-            bail!("Undefined variable '{}'.", name);
-        };
-
-        Ok(value)
+            panic!("Failed to resolve variable: {}", name);
+        }
     }
 
     pub fn define_variable(&mut self, name: &str, value: Value) -> anyhow::Result<()> {
@@ -72,11 +75,18 @@ impl Environment {
 
 pub struct Interpreter<'p> {
     printer: &'p mut dyn Printer,
+    global_scope: ScopePtr,
+    resolved: HashSet<usize>,
 }
 
 impl<'p> Interpreter<'p> {
     pub fn new(printer: &'p mut dyn Printer) -> Self {
-        Self { printer }
+        Self {
+            printer,
+            // TODO: global symbols
+            global_scope: Scope::new_ptr(None),
+            resolved: HashSet::new(),
+        }
     }
 
     pub fn evaluate_stmt(
@@ -92,7 +102,7 @@ impl<'p> Interpreter<'p> {
                 let value = self.evaluate_expr(environment, &expr.expr)?;
                 self.printer.print(&format!("{:?}", value));
             }
-            Statement::Variable(var) => {
+            Statement::VariableDecl(var) => {
                 let value = if let Some(expr) = &var.expr {
                     self.evaluate_expr(environment, &expr)?
                 } else {
@@ -203,7 +213,10 @@ impl<'p> Interpreter<'p> {
                     }
                 }
             }
-            Expr::Variable(expr) => environment.lock().unwrap().get_variable(&expr.name)?,
+            Expr::Variable(expr) => environment
+                .lock()
+                .unwrap()
+                .get_variable(&expr.name, expr.resolution)?,
             Expr::Assign(expr) => {
                 let value = self.evaluate_expr(environment, &expr.value)?;
                 environment

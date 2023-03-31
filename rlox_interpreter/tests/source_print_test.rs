@@ -1,4 +1,4 @@
-use rlox_interpreter::{Environment, Interpreter, Printer};
+use rlox_interpreter::{Environment, Interpreter, Printer, Resolver, Scope};
 use rlox_parser::{Parser, Scanner};
 
 struct TestPrinter {
@@ -23,8 +23,12 @@ fn print_from(source: &str) -> anyhow::Result<Vec<String>> {
     let mut printer = TestPrinter::new();
     let tokens = Scanner::new(source).scan_tokens()?;
     let mut parser = Parser::new(tokens);
-    let statements = parser.parse()?;
+    let mut statements = parser.parse()?;
     let environment = Environment::new_globals_ptr();
+    let global_scope = Scope::new_ptr(None);
+    for stmt in &mut statements {
+        Resolver.resolve_statement(&global_scope, stmt)?;
+    }
     let mut interpreter = Interpreter::new(&mut printer);
     for s in statements {
         interpreter.evaluate_stmt(&environment, &s)?;
@@ -80,7 +84,6 @@ print sum(4);
 }
 
 #[test]
-#[ignore]
 fn test_capturing_using_static_scope() {
     let source = r#"
 var a = "global";

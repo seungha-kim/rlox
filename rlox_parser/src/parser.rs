@@ -1,6 +1,6 @@
 use anyhow::bail;
 use rlox_syntax::*;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex, RwLock};
 
 type ParseExprResult = anyhow::Result<Expr>;
 type ParseStmtResult = anyhow::Result<Statement>;
@@ -49,7 +49,7 @@ impl Parser {
 
         self.consume(&TokenKind::Semicolon, "Expect ';' after value.")?;
 
-        Ok(statement::Variable::new_wrapped(name, expr))
+        Ok(statement::VariableDecl::new_wrapped(name, expr))
     }
 
     fn parse_function_decl(&mut self) -> ParseStmtResult {
@@ -81,7 +81,7 @@ impl Parser {
 
         self.consume(&TokenKind::LeftBrace, "Expect '{' before function body.")?;
 
-        let body = Arc::new(self.parse_block_statement()?);
+        let body = Arc::new(RwLock::new(self.parse_block_statement()?));
         Ok(statement::Function::new_wrapped(name, params, body))
     }
 
@@ -278,7 +278,7 @@ impl Parser {
             let value = self.parse_assignment()?;
 
             if let Expr::Variable(var) = expr {
-                return Ok(expr::Assign::new_wrapped(var.name, value));
+                return Ok(expr::Assign::new_wrapped(var.name, value, 0));
             }
 
             return Self::error(&equals, "Invalid assignment target.");
@@ -428,7 +428,7 @@ impl Parser {
             self.consume(&TokenKind::RightParen, "Expect ')' after expression")?;
             expr::Grouping::new_wrapped(expr)
         } else if self.match_(&[TokenKind::Identifier]) {
-            expr::Variable::new_wrapped(self.previous().lexeme.to_owned())
+            expr::Variable::new_wrapped(self.previous().lexeme.to_owned(), 0)
         } else {
             return Self::error(self.peek(), "Expect expression.");
         };
